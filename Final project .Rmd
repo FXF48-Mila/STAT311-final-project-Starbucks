@@ -1,0 +1,652 @@
+---
+title: "More about Your Starbucks Order"
+author: "Liuyixin Shao, Sophia Lan, Cole Smidt"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r load-packages, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-12-21/starbucks.csv')
+library(tidyverse)
+library(openintro)
+library(GGally)
+library(broom)
+library(lubridate)
+library(tidymodels)
+library(ggridges)
+library(patchwork)
+```
+ 
+```{r mutate_data, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks <- starbucks %>% mutate(milk = 
+                                  case_when(milk == 0 ~ "none",
+                                          milk == 1 ~ "nonfat",
+                                          milk == 2 ~ "2%",
+                                          milk == 3 ~ "soy",
+                                          milk == 4 ~ "coconut",
+                                          milk == 5 ~ "whole"))
+ 
+starbucks <- starbucks %>% mutate(whip = ifelse(whip == 0, "no", "yes"))
+ 
+starbucks <- starbucks %>% mutate(trans_fat_g = 
+                                  case_when(trans_fat_g == "0" ~ 0.0,
+                                          trans_fat_g == "0.1" ~ 0.1,
+                                          trans_fat_g == "0.2" ~ 0.2,
+                                          trans_fat_g == "0.3" ~ 0.3,
+                                          trans_fat_g == "0.4" ~ 0.4,
+                                          trans_fat_g == "0.5" ~ 0.5,
+                                          trans_fat_g == "02" ~ 2))
+ 
+starbucks <- starbucks %>% mutate(fiber_g = 
+                                  case_when(fiber_g == "0" ~ 0,
+                                          fiber_g == "01" ~ 1,
+                                          fiber_g == "02" ~ 2,
+                                          fiber_g == "1" ~ 1,
+                                          fiber_g == "2" ~ 2,
+                                          fiber_g == "3" ~ 3,
+                                          fiber_g == "4" ~ 4,
+                                          fiber_g == "5" ~ 5,
+                                          fiber_g == "6" ~ 6,
+                                          fiber_g == "7" ~ 7,
+                                          fiber_g == "8" ~ 8,
+                                          fiber_g == "9" ~ 9))
+ 
+starbucks <- starbucks %>% mutate(size = case_when(serv_size_m_l == 591 ~ "venti(hot)", 
+                                               serv_size_m_l == 709 ~ "venti(cold)", 
+                                               TRUE ~ size))
+starbucks_new <- starbucks %>% filter(calories >= 100)
+starbucks_new <- starbucks_new %>% mutate (calories_log10 = log10(calories))
+```
+## Introduction 
+How many calories are in your go-to Starbucks order? How does this calorie count change from drink to drink, and what happens if I get a venti iced latte instead of a grande, do the extra calories really add up? What variables influence the amount of calories in a given drink the most?     
+ 
+Starbucks is the largest coffee shop in the world, selling upwards of 4 billion cups of coffee every year according to their website. Millions of people across the world, probably including you, go to Starbucks every morning for their daily coffee. The Official Starbucks Nutritional dataset (see link 1), released by Starbucks, provides customers with information on all beverages offered on their menu, but is difficult to interpret with just a glance.    
+ 
+The interpretation of this information can help customers understand the nutritional content and calorie profile of their favorite beverages. First of all, calorie count in individual servings can help us better assess the total calories we consume in a day. Secondly, some nutrients may help some special groups make choices that can be vital to their health. For example, people with diabetes will choose beverages that are sugar-free, lower in fat, and lower in calories, and people who are lactose intolerant can choose milk-free drinks. Customers can find this relevant information from this data sheet and the interpretations made from it. Third, if a very detailed nutritional data table is provided, customers will trust Starbucks more, which can improve the reputation of the brand and attract more customers. Collecting this data is also very useful for Starbucks in making its menu. The menu contains guides on how customers can make better choices based on calories and other factors.       
+ 
+As seen in the graph below, the distribution of calories has a fairly significant right-skew. It is also somewhat bimodal, with a larger distribution near zero.  In order to combat this and make the data more normal, we have converted our response variable `calories` to a logarithmic scale (base 10), named `calories_log10`, thus making it a more normal and less skewed distribution, as seen below. Along with this, we also cut the dataset to no longer include any drinks with less than 100 calories to eliminate outliers in our dataset. Our new response variable, also below, has a much more normal distribution, making it much easier to model the data.  
+ 
+```{r response_variable_plot, echo=FALSE, fig.height=5, fig.width=10, message=FALSE, warning=FALSE}
+response_before <- ggplot(data = starbucks, mapping = aes(x = calories))+
+ geom_density()+
+ labs(title = "The Distribution of Calories",
+       subtitle = "The density plot of calories",
+       x = "Total Calories for Beverage (KCal)",
+       y = "Density",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/
+      master/data/2021/2021-12-21/readme.md")
+ 
+response_after <- ggplot(data = starbucks_new, mapping = aes(x = log10(calories)))+
+ geom_density()+
+ labs(title = "The Distribution of the Logarithm (base 10) of
+Calories",
+       subtitle = "The density plot of calories_log10",
+       x = "The Logarithm (base 10) of Total Calories (kCal)",
+       y = "Density",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/
+      master/data/2021/2021-12-21/readme.md")
+ 
+response_before + response_after
+```
+          
+Then, we converted milk from an integer variable to a categorical variable, making it easier to use with visuals and model building. We also separate “venti” in `size` into two different categories - “venti(cold)” and “venti(hot)”, since “venti” size cups for cold drinks and hot drinks in Starbucks contain different serving sizes.
+ 
+Below is a codebook of the dataset that we used, along with a glimpse of our data as well.
+ 
+| Data Name | Description | Class | Values |
+|-----------|-------------|-------|--------|
+| `product_name` | Name of the product | categorical | Coffee, Latte, Espresso, etc|
+|`size`| Size of drink | categorical | short, tall, grande, venti(hot), venti(cold), trenta |
+|`milk`| Type of milk used in drink | categorical | none, nonfat, 2%, soy, coconut, whole |
+|`whip`| Whether or not whipped cream was added | categorical | yes, no |
+|`calories`| Kilocalorie in product | numeric | $[100,640]$ |
+|`calories_log10`|The logarithm of total calories in product (kCal) | numeric | $[2, 2.80618]$ |
+|`total_fat_g`| Total fat in grams | numeric | $[0,28]$ |
+|`sodium_mg`| Sodium in milligrams | numeric | $[0,370]$ |
+|`total_carbs_g`| Total Carbohydrates in grams | numeric | $[8,96]$ |
+|`sugar_g`| Sugar in grams | numeric | $[5,89]$ |
+ 
+```{r glimpse_the_data, message = FALSE, warning = FALSE, echo = FALSE}
+starbucks_new_glimpse <- starbucks_new %>% select(product_name, size, milk, whip, calories, calories_log10, total_fat_g, sodium_mg, total_carbs_g, sugar_g)
+glimpse(starbucks_new_glimpse)
+```
+ 
+## Model Building
+ 
+We have built three separate models to try to estimate the number of calories in a given drink. In order to do this, we split the dataset in half into a training group and a testing group. We have built the models on the training data and will test their validity of the testing set to see which of the three is able to model the best.  
+ 
+```{r split, warning = FALSE, message = FALSE, echo = FALSE}
+set.seed(1000)
+ 
+starbucks_split <- initial_split(starbucks_new, prop = 0.5)
+starbucks_train <- training(starbucks_split)
+starbucks_test <- testing(starbucks_split)
+```
+ 
+ 
+### Model proposed by Liuyixin Shao 
+ 
+  I chose to use `total_carbs_g`, `total_fat_g`, and `size` as the explanatory variables in my model. The fitted model equation I came up with for the response variable is: 
+$\hat{calories\_log10} = 1.99 - 0.0277 * sizeshort - 0.0106 * sizetall - 0.0295 * sizetrenta - 0.0289 * sizeventi(cold)$  
+$+ 0.0153 * sizeventi(hot) + 0.0067 * total\_carbs\_g + 0.0148 * total\_fat\_g$    
+ 
+  This means, holding the other variables in the model the same, when the total carbohydrate in the beverage increases by 1 gram, the calories it contains is expected to increase by a factor of 1.0155, on average. When the total fat increases by 1 gram, the calories the beverage contains is expected to increase by a factor of 1.0347, on average. Holding the other variables in the model the same, if a customer orders a drink with "short" size, the calories inside will be expected to decrease by a factor of 0.9382, on average, while "tall" size to decrease by a factor of 0.9759, "trenta" size to decrease by a factor of 0.9343, "venti(cold)" size to decrease by a factor of 0.9356, and "venti(hot)" size to increase by a factor of 1.0359, on average.
+  
+  I put all the estimates from the "tidy" function as well as the r-square and RMSE I calculated below.
+```{r fit_model_LyxS, echo=FALSE, message=FALSE, warning=FALSE}
+starbucks_train_main_model <- lm(calories_log10 ~ size + total_carbs_g + total_fat_g, data = starbucks_train)
+tidy (starbucks_train_main_model) %>% select(term, estimate) %>% mutate(undo_log = 10^estimate)
+```
+ 
+```{r glance_RMSE, echo=FALSE, message=FALSE, warning=FALSE, eval = FALSE}
+glance(starbucks_train_main_model) %>% select(r.squared, adj.r.squared)
+ 
+test_pred <- predict(starbucks_train_main_model, newdata = starbucks_test) %>%
+bind_cols(starbucks_test %>% select(calories_log10)) %>% 
+  rename(pred = ...1)
+rmse(test_pred, truth = calories_log10, estimate = pred)
+```
+```{r rsquare_rmse_table, echo=FALSE, message=FALSE, warning=FALSE}
+c("r.squared" = 0.9316462, "adj.r.squared" = 0.9306172, "rmse(standard)" = 0.05284181) 
+```
+ 
+ 
+  As we know, the three main categories of factors that affect calories in food are carbohydrates, fat, and protein. Therefore, I'd like to pick my explanatory variables that are related to these categories.       
+    
+  Since `total_fat_g` and `total_carbs_g` are two existing variables in our Starbucks dataset, I started my analysis by pre-selecting them as two of my explanatory variables. Then, I made a scatterplot matrix to roughly see the distributions of my two pre-selecting numerical variables. According to the matrix below, both `total_fat_g` and `total_carbs_g` show strong linear positive relationships with `calories_log10`, which is our response variable. The correlation is about 0.736 and 0.863 separately, showing that they are highly correlated with the response variable. What's more, the correlation between these two numerical variables is 0.401, which is weak and proves that I didn't encounter collinearity for choosing these two as my explanatory variables. 
+ 
+```{r matrix, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks_train %>% 
+  select (calories_log10, total_fat_g, total_carbs_g) %>% 
+  ggpairs() +
+  labs(title = "The Scatterplot Matrix of the Two Numerical Explanatory Variables",
+       subtitle = "The matrix of Calories (log based 10), Total Fat, and Total Carbohydrates",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md")
+```
+  
+  
+  Let's take a closer look at the distribution of `total_carbs_g`. Even though the distribution in the histogram is slightly right-skewed, I decided not to take logarithm to this variable because 1) the distribution will become left-skewed when I apply log in `total_carbs_g`, 2) there exists a strong linear relationship in the scatterplot of `total_carbs_g` and `calories_log10`. With further analysis, I knew the median of `total_carbs_g` in this training dataset is 42 grams with a range from 8 to 95 grams, verifying that the distribution of `total_carbs_g` is roughly symmetric. The correlation between `total_carbs_g` and `calories` is above 87%, proving that the relationship between these two variables is very strong. Thus, I picked `total_carbs_g` as one of my numerical explanatory variables. 
+  
+```{r carb_graph, warning = FALSE, message = FALSE, echo = FALSE, fig.height=4, fig.width=8}
+carbs_his <- ggplot(data = starbucks_train, mapping = aes(x = total_carbs_g)) + geom_histogram(binwidth = 4) +
+  labs(title = "The Distribution of Carbohydrates",
+       subtitle = "The histogram of total carbohydrates (gram)",
+       x = "Total Carbohydrates (gram)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+# This is the calculation of the binwidth:
+#starbucks_train %>% summarize(max_carbs = max(total_carbs_g), min_carbs = min(total_carbs_g))
+# starbucks_train %>% nrow()
+# range: 95-8 = 87
+# total sample: 473
+# binwidth = 87/sqrt(473) = 4.0
+carbs_scatter <- ggplot(data = starbucks_train, aes(x = total_carbs_g, y = calories_log10)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "The Distribution of Carbohydrates",
+       subtitle = "The scatterplot of total carbohydrates (gram)",
+       x = "Total Carbohydrates (gram)",
+       y = "The Logarithm (base 10) of Total Calories (kCal)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+carbs_his + carbs_scatter
+```
+```{r carb_summarize, warning = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+starbucks_train %>% summarize(max_carbs = max(total_carbs_g), min_carbs = min(total_carbs_g), median_carbs = median(total_carbs_g))
+ 
+starbucks_train %>% summarize(cor(total_carbs_g, calories_log10), cor(total_carbs_g, calories))
+```
+ 
+  Below are the distributions of `total_fat_g`. Although the distribution in the histogram is also right-skewed and taking logarithm to `total_fat_g` will make the distribution of `total_fat_g` slightly more symmetric, I decided not to take logarithm to this variable because 1) the distribution in scatterplot will become nonlinear when I apply log in `total_fat_g`, 2) there exists a strong linear relationship in the scatterplot of `total_fat_g` and `calories_log10`. I put the difference between the distribution of `total_fat_g` versus the `calories_log10` and the logarithm version of `total_fat_g` versus the `calories_log10` below.
+  
+```{r fat_graph, echo=FALSE, fig.height=6, fig.width=8, message=FALSE, warning=FALSE}
+fat_box <- ggplot(data = starbucks_train, mapping = aes(x = total_fat_g)) + geom_density() +
+  labs(title = "The Distribution of Total Fat",
+       subtitle = "The density plot of total fat (gram)",
+       x = "Total Fat (gram)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+fat_scatter <- ggplot(data = starbucks_train, aes(x = total_fat_g, y = calories_log10)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "The Distribution of Total Fat",
+       subtitle = "The scatterplot of total fat (gram)",
+       x = "Total Fat (gram)",
+       y = "The Logarithm (base 10) 
+of Total Calories (kCal)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+fat_box_log10 <- ggplot(data = starbucks_train, mapping = aes(x = log10(total_fat_g))) + geom_density() +
+  labs(title = "The Distribution of the Logarithm
+of Total Fat (base 10)",
+       subtitle = "The density plot of log10(total_fat_g)",
+       x = "the Logarithm (base 10) of Total Fat (gram)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+fat_scatter_log10 <- ggplot(data = starbucks_train, aes(x = log10(total_fat_g), y = calories_log10)) +
+  geom_point() +
+  geom_smooth(se = FALSE) +
+  labs(title = "The Distribution of the Logarithm
+of Total Fat (base 10)",
+       subtitle = "The scatterplot of log10(total_fat_g)",
+       x = "the Logarithm (base 10) of Total Fat (gram)",
+       y = "The Logarithm (base 10) 
+of Total Calories (kCal)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+fat_box + fat_scatter + fat_box_log10 + fat_scatter_log10
+```
+ 
+  Then I used "bootstrap" to further prove the strong positive relationship between total fat and calories in Starbucks beverages. Because taking the logarithm of calories made my response variable small in scale, resulting in the confidence interval of the slope I calculated between `calories_log10` and `total_fat_g` very small (but still meaningful because the range doesn't contain zero), I chose to calculate my confidence interval with the actual calories in the dataset. In this way, even though I'm using the training dataset and don’t know what the full population looks like, I'm 95% confident that the slope of `total_fat_g` in the population is between 14.389 and 16.392. Since 0 is not in this range, there must be a positive relationship between total fat and calories. Therefore, I chose `total_fat_g` as one of my explanatory variables. 
+  
+```{r fat_boot_log10, warning = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+boot_slope_starbucks_log10 <- starbucks_train %>%
+                specify(calories_log10 ~ total_fat_g) %>%
+                generate(reps = 5000, type = "bootstrap") %>%
+                calculate(stat = "slope") 
+boot_slope_starbucks_log10 %>% get_confidence_interval(level = 0.95)
+```
+```{r fat_bootstrap, warning = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+boot_slope_starbucks <- starbucks_train %>%
+                specify(calories ~ total_fat_g) %>%
+                generate(reps = 5000, type = "bootstrap") %>%
+                calculate(stat = "slope") 
+boot_slope_starbucks %>% get_confidence_interval(level = 0.95)
+```
+```{r show_boot_form, warning = FALSE, message = FALSE, echo = FALSE}
+c("lower ci for log10_calories" = 0.023, "upper ci for log10_calories" = 0.026, "lower ci for calories" = 14.389, "upper ci for calories" = 16.392) 
+```
+(Notice: "ci" represents the word "confidence interval")
+ 
+  Since protein rarely exists in beverage drinks, there isn't a column that specifically analyzes protein in our Starbucks dataset. I thought `milk` would be the most appropriate variable that is relevant to protein. However, according to the density plot I made below, there isn't a huge difference in the distributions between different kinds of milk and calories (except for "non-milk", which is undoubtedly reasonable to see this difference because beverages without milk also contain less fat, and we already knew fat has a strong correlation with calories). As a result, I gave up picking `milk` as one of my explanatory variables because the correlation between `milk` and `calories` is weak.
+  
+```{r milk_plot_size_plot, warning = FALSE, message = FALSE, echo = FALSE,fig.height=7, fig.width=14}
+milk_plot <- ggplot (data = starbucks_train, mapping = aes(x = calories_log10, y = milk, fill = milk)) + 
+geom_density_ridges() + 
+  labs(title = "The Distribution of Calories (log base 10) in different milk",
+       subtitle = "The density ridges plot of log10(calories) in different milk",
+       x = "The Logarithm (base 10) of Total Calories (kCal)",
+       y = "The Type of Milk",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/
+master/data/2021/2021-12-21/readme.md")
+ 
+size_plot <- ggplot (data = starbucks_train, mapping = aes(x = calories_log10, y = size, fill = size)) +
+  geom_boxplot() + 
+  labs(title = "The Distribution of Calories (log base 10) in different size",
+       subtitle = "The boxplot of log10(calories) in different size",
+       x = "The Logarithm (base 10) of Total Calories (kCal)",
+       y = "Cup Size",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/
+master/data/2021/2021-12-21/readme.md")
+ 
+milk_plot + size_plot
+```
+ 
+ 
+  The size of beverage could also be a factor that affects its calories inside, as we know taking other relevant factors the same, a larger cup of Starbucks drink always contains more calories than a smaller one. According to the boxplot above and the table below, the median amount of calories in the "short" size cups (which are the smallest serving cups in Starbucks) is 170 kCal. "Tall" and "grande" are the second and the third smallest serving cups in Starbucks. Their median amounts of calories are 200 kCal and 270 kCal separately. The serving size of "venti" cups is 709 ml for cold drinks and 591 ml for hot drinks. Therefore, as we expected, the median amount of calories in "venti" size cups for cold drinks is 370 kCal, which is larger than those for hot drinks (which is around 300 kCal). Surprisingly, "trenta" is the largest cup size served in Starbucks, but the median amount of calories it contains is only 210 Kcal. This is because "trenta" size cups are only available in specific iced beverages like iced coffee, cold brew, and tea drinks with more ice but not flavored drinks inside (see link 2). The seemingly anomalous but reasonably low calories content in "trenta" size Starbucks beverages also becomes the reason why I chose to use the categorical variable `size` instead of the numerical variable `serv_size_m_l` in the dataset for my model. Otherwise, my model won't be very accurate. In summary, there is a distinct relationship between the categories of serving cup size and the logarithm of calories in Starbucks drinks, resulting in `size` is a suitable categorical explanatory variable for my model.
+  
+```{r size, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks_train %>% group_by(size) %>% 
+  summarize (median_size = median(calories_log10), 
+             IQR_size = IQR(calories_log10)) %>%
+  mutate(undo_log_median = 10^median_size)
+```
+ 
+ 
+```{r test, warning = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+starbucks_train_main_model <- lm(calories_log10 ~ size + total_carbs_g + total_fat_g, data = starbucks_train)
+tidy (starbucks_train_main_model)
+starbucks_train %>% summarize(max = max(calories_log10),
+                              min = min(calories_log10))
+glance(starbucks_train_main_model) %>% select(r.squared, adj.r.squared)
+ 
+ 
+test_pred <- predict(starbucks_train_main_model, newdata = starbucks_test) %>%
+bind_cols(starbucks_test %>% select(calories_log10)) %>% 
+  rename(pred = ...1)
+ 
+ 
+rmse(test_pred, truth = calories_log10, estimate = pred)
+```
+### Model Proposed by Cole Smidt
+ 
+In the model that I have created, I will be comparing the number of calories to the milk type used, the total amount of fat a drink has, the amount of sodium a drink has, and the amount of sugar in a given drink. 
+ 
+The first variable used in my model, `milk`, is fairly self-explanatory. There are different amounts of fat in each type of milk, and because fat directly plays into the total calorie count, with each gram of fat adding 9 calories to the total calorie count. As seen with the graph below, there is certainly a correlation between milk and calories.
+ 
+```{r milk_graph, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks_train %>%
+  ggplot(mapping = aes(x = calories_log10, fill = milk)) +
+      geom_boxplot() +
+      labs(title = "Log Calories vs Milk",
+       subtitle = "Calories compared to type of milk used in drink",
+       x = "Total Log Calories for Beverage (KCal)",
+       y = "Milk type",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md")
+ 
+```
+ 
+```{r milk, size, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks_train %>% group_by(milk) %>% 
+  summarize (median_milk = median(calories_log10), 
+             IQR_milk = IQR(calories_log10)) %>%
+  mutate(undo_log_median = 10^median_milk)
+```
+ 
+ 
+The results of the graph above were somewhat surprising to me until I conducted a little bit more research. I was intrigued by the high average of coconut milk, until I learned that Starbucks adds sugar into its coconut milk, which is the reason that the average calorie count for drinks with coconut milk is statistically higher than that of nonfat and soy milk.
+ 
+The next variable, `total_fat_g`, is also very intuitive when it comes to the comparison between it and calories. The amount of fat in a drink directly effects the total number of calories in a drink, which means that calculating the number of calories by fat will make a solid model. As seen by the graph below, there is a strong correlation between the two.
+ 
+```{r fat, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks_train %>%
+  ggplot(mapping = aes(x = calories_log10, y = total_fat_g)) +
+  geom_point()+
+  geom_smooth()+
+  labs(title = "Calories vs. Total Fat",
+       subtitle = "Calories compared to total fat in a drink",
+       x = "Total Calories for Beverage (KCal)",
+       y = "Total fat (g)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md")
+```
+ 
+```{r fat_boot, warning = FALSE, message = FALSE, echo = FALSE}
+boot_fat <- starbucks_train %>% 
+             specify(calories_log10 ~ total_fat_g) %>% 
+             generate(reps=1000, type="bootstrap") %>%
+             calculate(stat="slope")
+ 
+boot_fat %>%
+  summarize(
+    lower = quantile(stat, 0.025),
+    upper = quantile(stat, 0.975))
+```
+As seen by the graph, there is a strong correlation between the two variables. Along with this, I computed the 95 percentile range for the bootstrap of this variable, and found that it did not include zero, meaning that there is a strong positive correlation.
+ 
+The third variable that will be a part of my model is `sodium_mg`. Sodium is not something inherently found in coffee, but is often found in other ingredients commonly added to specialty coffee drinks. It is also somewhat less intuitive to use this variable, as sodium does not directly effect the number of calories in a drink. It is useful, though, as it shows when other ingredients are added to the coffee, which often include things that are high in sugar and calories.
+ 
+```{r sodium, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks_train %>%
+  ggplot(mapping = aes(x = calories_log10, y = sodium_mg)) +
+  geom_point()+
+  geom_smooth()+
+  labs(title = "Calories vs. Sodium",
+       subtitle = "Calories compared to sodium in a drink",
+       x = "Total Calories for Beverage (KCal)",
+       y = "Sodium (mg)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md")
+```
+ 
+```{r sodium_boot, warning = FALSE, message = FALSE, echo = FALSE}
+boot_sodium <- starbucks_train %>% 
+             specify(calories_log10 ~ sodium_mg) %>% 
+             generate(reps=1000, type="bootstrap") %>%
+             calculate(stat="slope")
+ 
+boot_sodium %>%
+  summarize(
+    lower = quantile(stat, 0.025),
+    upper = quantile(stat, 0.975))
+```
+As seen above in the graph, there is a positive correlation between these two variables, and the 95% bootstrap distribution confirms this, with a lower bound of 0.0227 and an upper bound of 0.0260.
+ 
+My fourth and final variable, which I found to be the best at modeling for calories, is `sugar_g`. I found this variable fairly intuitive to use here, as every gram of sugar in a drink adds 4 calories. Along with this, most calories from sweet coffee drinks comes from added sugar. Below you can see how well sugar models the number of calories just by itself.
+ 
+```{r sugar, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks_train %>%
+  ggplot(mapping = aes(x = calories_log10, y = sugar_g)) +
+  geom_point()+
+  geom_smooth()+
+  labs(title = "Calories vs. Sugar",
+       subtitle = "Calories compared to sugar in a drink",
+       x = "Total Calories for Beverage (KCal)",
+       y = "Sugar (g)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md")
+```
+ 
+```{r sugar_boot, warning = FALSE, message = FALSE, echo = FALSE}
+boot_sugar <- starbucks_train %>% 
+             specify(calories_log10 ~ sugar_g) %>% 
+             generate(reps=1000, type="bootstrap") %>%
+             calculate(stat="slope")
+ 
+boot_sugar %>%
+  summarize(
+    lower = quantile(stat, 0.025),
+    upper = quantile(stat, 0.975))
+```
+ 
+The bootstraps for sugar has a confidence interval that are all positive, meaning there is a positive linear correlation between sugar and the amount of calories in a given drink. The linear correlation can also be seen by the graph.
+ 
+With all this said, the model that I created has the following equation:
+ 
+```{r model+r^2, include = FALSE}
+starbucks_int_fit <- lm(calories_log10 ~ milk + total_fat_g + sodium_mg + sugar_g, data = starbucks_train)
+tidy(starbucks_int_fit)
+ 
+glance(starbucks_int_fit) %>% select(r.squared,
+                                     adj.r.squared)
+```
+ 
+ 
+$\hat{calories\_log10} = 2.01 - 0.0312 * milkcoconut - 0.0861 * milknone + 0.00757 * milknonfat + 0.0193 * milksoy * 0.00328 * milkwhole + 0.00161 * total\_fat\_g - 0.000107 * sodium_mg + 0.00676 * sugar\_g$    
+ 
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+cal_pred <-predict(starbucks_int_fit, newdata=starbucks_test)  %>%
+  bind_cols(starbucks_test %>% select(calories_log10) ) %>% 
+  rename(pred = ...1)
+```
+ 
+When fitted to the test data, the RMSE I have calculated is below, along with the R squared and adjusted R squared values:
+ 
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+rmse(cal_pred, truth = calories_log10 , estimate = pred)
+ 
+glance(starbucks_int_fit) %>% select(r.squared,
+                                     adj.r.squared)
+```
+ 
+### Model proposed by Sophia Lan
+ 
+In my individual project, I am going to talk about the connection between 3 explanatory variables—`whip`, `sodium_mg`, and `sugar_g`—and our group's chosen response variable—Calories. Sodium and Sugar are the nutrients we see most often in our lives. Excessive salt can easily lead to increased blood pressure. Excessive sugar is more likely to cause obesity and diabetes. Whip is something that young people like to add to coffee very much. I'm predicting that these three explanatory variables may have a strong connection to calories. Below, I will use some statistical methods to prove my guess and build a Model.
+ 
+For sugar, as the website Jessicablack says, I quote a paragraph - "Hand-in-hand with limiting sugar intake is avoiding empty calories. Empty calories are defined as calories that provide a quick burst of energy but little or no additional nutritional value. Because empty calories do not provide any other nutritional value, you have to eat other foods to get the necessary nutrients. This ultimately leads to overeating." (see link3)
+ 
+The distribution of sugar_g is not so skewed and only has one peak. So, I will just use `sugar_g` not log10(sugar_g). The range is 83, and there are 473 variables. I calculated the binwidth should be around 3.8. The median is around 39. Also, as we can see the relationship between sugar and `calories_log10` in the scatterplot, it's positive and linear. It's a very strong relationship. The correlation between them is around 0.829, which is very close to 1. Regarding the confidence interval, the confidence interval level I chose is 95%. 0 is not in the range. There must be some connection between them. We can infer that a 95% bootstrap confidence interval for the slope of `sugar_g` can be calculated as the range [0.00772, 0.00866].
+ 
+```{r sugar_scatterplot_cor_distribution, echo=FALSE, fig.height=4, fig.width=8, message=FALSE, warning=FALSE}
+Surgar_Scatterpoint<-ggplot(data=starbucks_train,
+       mapping=aes(x=sugar_g, y=calories_log10))+
+      geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title="The Relationship between 
+       Sugar and Log10(Calories)",
+       subtitle="The data of starbucks_train",
+       x="Sugar (grams)",
+       y="Log10(calories)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+Sugar_Distribution<-ggplot (data=starbucks_train, mapping=aes(x=sugar_g))+
+  geom_histogram(binwidth=3.8)+
+  labs(title="The Distribution of Sugar_g",
+       subtitle="The histogram of sugar_g",
+       x="Sugar (grams)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+Sugar_Distribution+Surgar_Scatterpoint
+ 
+starbucks_train %>%summarise(cor(sugar_g, calories_log10))
+```
+```{r sugar_confidence_interval, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1000)
+ 
+boot_df<-starbucks_train%>%
+  specify(calories_log10~sugar_g)%>%
+  generate(reps=1000, type="bootstrap")%>%
+  calculate(stat="slope")
+ 
+boot_df%>%summarize(
+  lower=quantile(stat, 0.025),
+  upper=quantile(stat, 0.975))
+```
+ 
+Then, why did I choose sodium? As the website creekside puts it, "several studies have shown that a high sodium diet can actually cause you to drink less water and be more hungry, which could then lead to overeating and more weight gain."(see link4)
+ 
+The distribution of `sodium_mg` is not skewed, symmetric, and only has one peak. So, I will just use `sodium_mg` not log10(sodium_mg). The range is 370, and there are 473 variables. I calculated the binwidth should be around 17. The median is around 150.  Also, as we can see the relationship between sodium and `calories_log10` in the scatterplot, it's positive and linear. It's a relatively strong relationship. The correlation between them is around 0.755, which is quite close to 1. Regarding the confidence interval, the confidence interval level I chose is 95% too just as sugar. 0 is not in the range. There must be some connection between sodium and calories. We can infer that a 95% bootstrap confidence interval for the slope of `sodium_mg` can be calculated as the range [0.00157, 0.00182].
+ 
+```{r sodium_scatterplot_distribution_cor), echo=FALSE, fig.height=4, fig.width=8, message=FALSE, warning=FALSE}
+Sodium_scatterplot<-ggplot(data=starbucks_train,
+       mapping=aes(x=sodium_mg, y=calories_log10))+
+      geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title="The Relationship between 
+       Sodium and Log10(Calories)",
+       subtitle="The data of starbucks_train",
+       x="Sodium(mg)",
+       y="Log10(calories)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+Sodium_distribution<-ggplot (data=starbucks_train, mapping=aes(x=sodium_mg))+
+  geom_histogram(binwidth=17)+
+  labs(title="The Distribution of Sodium_mg",
+       subtitle="The histogram of Sodium_mg",
+       x="Sodium(mg)", 
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+Sodium_distribution+Sodium_scatterplot
+ 
+starbucks_train %>%summarise(cor(sodium_mg, calories_log10))
+```
+```{r sodium_confidence_interval,  warning = FALSE, message = FALSE, echo=FALSE}
+set.seed(1000)
+ 
+boot_df<-starbucks_train%>%
+  specify(calories_log10~sodium_mg)%>%
+  generate(reps=1000, type="bootstrap")%>%
+  calculate(stat="slope")
+ 
+boot_df%>%summarize(
+  lower=quantile(stat, 0.025),
+  upper=quantile(stat, 0.975))
+```
+ 
+For whip, as we can see from the density and boxplot, whip has a really strong impact on calories. The median `calories_log10` for coffee with whip is around 2.32. Most `calories_log10` are below 2.4. However, the median `calories_log10` for coffee with no whip is around 2.56. Most `calories_log10` are above 2.4. There is a big difference on log10(calories) for drinks with whip or not.As a result, `whip` is a really good explanatory variable.
+ 
+```{r whip_calories_density, echo=FALSE, fig.height=4, fig.width=8, message=FALSE, warning=FALSE}
+Whip_Density<-ggplot(data = starbucks_train, mapping = aes(x = calories_log10,colour=whip))+
+ geom_density()+
+ labs(title = "The Distribution of Log10(Calories)
+      with whip or not",
+       subtitle = "The data of starbucks_train",
+       x = "Log10(calories)",
+       y = "whip",
+      caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+Whip_Boxplot<-ggplot(data = starbucks_train,
+       mapping = aes(x = calories_log10, fill = whip))+
+      geom_boxplot() +
+  labs (title = "The Distribution of Log10(Calories) 
+        with whip or not",
+       subtitle = "The data of starbucks_train",
+       x = "Log10(calories)",
+       y = "Whip",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/
+       blob/master/data/2021/2021-12-21/readme.md")
+ 
+Whip_Density+Whip_Boxplot
+```
+ 
+All in all, these are some of my background and scientific reasons for why I choose `whip`, `sodium_mg`, and `sugar_g`. The next step I do is to create a model for estimating `clories_log10`. The predicted model is: $\hat{calories\_log10}=2.03598 + 0.00529*sugar\_g + 0.00058*sodium\_mg + 0.12485*whipyes$
+ 
+I also do some interpretation for each slope to better understand the model. Holding the other variables in the model the same, when sugar increases by 1g, the calories is expected to increase by a factor of 1.012Kcal, on average. Holding the other variables in the model the same, when sodium increases by 1mg, the calories is expected to increase by a factor of 1.001Kcal on average. Holding the other variables in the model the same, the calories of beverages of whip is expected to be 0.12485Kcal higher, on average.
+ 
+```{r model_building_adjR, warning = FALSE, message = FALSE, echo=FALSE}
+calories_fit<-lm(calories_log10~sugar_g+sodium_mg+whip, data=starbucks_train)
+tidy(calories_fit)
+ 
+glance(calories_fit)%>%select(adj.r.squared)
+```
+ 
+To evaluate whether this model is good or not, I did some calculations. The adjusting R_square is around 0.8. We can know that 80% of variability in the response variable can be explained by the regression model. The root mean square error is around 0.0871. 0.806(range) is 9.25 times more than 0.0871, which is really great. 
+ 
+By using statistical methods and evaluating the calculation results, the model is pretty good overall.
+ 
+```{r predict_rmse, warning = FALSE, message = FALSE, echo=FALSE}
+calories_pred<-predict(calories_fit, newdata=starbucks_test)%>%
+bind_cols(starbucks_test%>%select(calories_log10))%>%
+  rename(pred=...1)
+ 
+rmse(calories_pred, truth=calories_log10, estimate=pred)
+ 
+starbucks_test%>%summarise(min=min(calories_log10), max=max(calories_log10))
+```
+ 
+ 
+Below, we made a table to display the r-squared and RMSE in our models.  
+ 
+| Model        | Training R Square adjusted | Testing RMSE |  
+|------------|-------------------------|------------|  
+| Liuyixin Shao |     0.9306172                 |     0.05284181   |  
+| Cole Smidt   |     0.915                     |     0.0628       | 
+| Sophia Lan    |     0.8000315                 |     0.08713573   |  
+ 
+ 
+## Results
+With the results of the r-squared and RMSE of each of our models, we have decided that the model made by Liuyixin best models the data. It has the highest adjusted r-squared and the lowest testing RMSE. 
+ 
+Using this model, the fitted model equation we came up with for `calories_log10` for the whole dataset is:   
+$\hat{calories\_log10} = 1.99 - 0.0342 * sizeshort - 0.0121 * sizetall - 0.0397 * sizetrenta - 0.0325 * sizeventi(cold)$  
+$+ 0.0181 * sizeventi(hot) + 0.0068 * total\_carbs\_g + 0.0141 * total\_fat\_g$ 
+  
+```{r full_data_log10, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks_final_main_model_log <- lm(calories_log10 ~ size + total_carbs_g + total_fat_g, data = starbucks_new)
+tidy (starbucks_final_main_model_log) %>% select(term, estimate) %>% mutate(undo_log = 10^estimate)
+```
+```{r full_data_log10_table, warning = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+starbucks_new %>% summarize(max = max(calories_log10),
+                              min = min(calories_log10))
+glance(starbucks_final_main_model_log) %>% select(r.squared, adj.r.squared)
+```
+Converting `calories` into a logarithmic scale helps us to have a normal distribution of our response variable, which enables us to build a better model. However, it is the variable `calories` that people truly care about when analyzing the contents of a drink. Therefore, we also applied our fitted model for `calories`, which displays the true number of calories in the dataset. The equation we get is:   
+ 
+$\hat{calories} = 27.11 - 7.57 * sizeshort - 7.43 * sizetall - 19.30 * sizetrenta - 0.88 * sizeventi(cold) + 18.73 * sizeventi(hot)$ 
+$+ 3.86 * total\_carbs\_g + 9.69 * total\_fat\_g$ 
+ 
+```{r full_data, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks_final_main_model <- lm(calories ~ size + total_carbs_g + total_fat_g, data = starbucks_new)
+tidy (starbucks_final_main_model) %>% select(term, estimate)
+```
+```{r full_data_table, warning = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+glance(starbucks_final_main_model) %>% select(r.squared, adj.r.squared)
+```
+ 
+```{r table_full, warning = FALSE, message = FALSE, echo = FALSE}
+c("adj.r.squared for calories_log" = 0.9278275, 
+  "adj.r.squared for calories" = 0.9787638)
+```
+ 
+This means, holding the other variables in the model the same, when the total carbohydrates in the beverage increases by 1 gram, we can expect an increase of 3.86 kCal in total calories in the beverage, on average. When the total fat increases by 1 gram, we can expect an increase of 9.69 kCal in total calories in the beverage, on average. Both of these values are extremely close to the actual number of calories contained in a gram of carbohydrates, 4 kCal, and fat, 9 kCal. Holding the other variables in the model the same, if a customer orders a drink with "short" size, the calories inside will be expected to decrease 7.57 kCal, on average, while "tall" size to decrease by 7.43 kCal, "trenta" size to decrease by 19.30 kCal, "venti(cold)" size to decrease by 0.88 kCal, and "venti(hot)" size to increase by 18.73 kCal, on average. When total carbohydrates and total fat contained in the beverage is 0, we expect the total calories in a “short” size Starbucks beverage to be 19.54 kCal, while in a “tall” size Starbucks beverage to be 19.68 kCal, in a “trenta” size Starbucks beverage to be 7.81kCal, in a “venti(cold)” size Starbucks beverage to be 26.23 kCal, and in a “venti(hot)” size Starbucks beverage to be 45.84 kCal, on average.
+ 
+Our regression model, when compared to the actual value of calories, has an adjusted r-squared value of 0.979, meaning it explains 97.9% of variability of the `calories`, which is even better than the r-squared modeling `calories_log`, where it explains 92.8% of the variability. This is a very accurate model of the data. The variables chosen in this model, `size`, `total_fat_g`, and `total_carbs_g`, were able to model this data the best due to their close relationship with the number of calories in a drink. Size is extremely important in determining the total calories, as the larger a drink is, the more calories it will have. Calories in “trenta” size beverages would perform slightly anomalously because this size is only served for a small number of beverages, meaning that their distribution is skewed when compared to the three other main sizes. Other than this, a large drink on average will always have more calories than a small drink of the same type. For example, in our dataset the vanilla sweet cream cold brew with no milk has 100 calories in the tall size, 110 in the grande, 200 in the venti, and 210 in the trenta. When it comes to the other two variables, both fat and carbohydrates have a strong linear relationship with calories. This relationship means that modeling the total number of calories in a given drink by these two numerical variables results in a well-performing model. Also, the correlation between fat and carbohydrate themselves is weak, proving that picking these two variables won’t cause collinearity to our model. Therefore, it’s the close relationships between the explanatory and response variables as well as the weak correlation between the explanatory variables themselves that builds this extremely accurate model, as can be seen by the r-squared value and the RMSE of the testing set.
+ 
+What we have found with this data is that the calories in a Starbucks drink vary widely based on a number of factors. We have found the best way to measure the amount of calories in a drink is by using the amount of fat, the amount of carbohydrates, and the size of the drink. This allows customers like yourself of Starbucks to get a better understanding of what is contained within the drink they are consuming.
+ 
+## Bibliography:
+Link1:https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md & https://globalassets.starbucks.com/assets/91939428ecd94155a58b8765b6397c87.pdf   
+ 
+Link2:https://www.rd.com/article/starbucks-coffee-sizes-explained/   
+ 
+Link3:https://www.creeksidefamilypractice.com/blog/salty-foods-how-sodium-affects-your-weight\    
+ 
+Link4:https://drjessicablack.com/relationship-sugar-calories-health/     
+ 

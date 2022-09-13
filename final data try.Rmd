@@ -1,0 +1,229 @@
+---
+title: "More about Your Starbucks Order"
+author: "Liuyixin Shao, Sophia Lan, Cole Smidt"
+date: "`r Sys.Date()`"
+output: openintro::lab_report
+---
+
+```{r load-packages, include = FALSE}
+starbucks <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-12-21/starbucks.csv')
+library(tidyverse)
+library(GGally)
+```
+
+```{r mutate_milk, include = FALSE}
+starbucks <- starbucks %>% mutate(milk = 
+                                  case_when(milk == 0 ~ "none",
+                                          milk == 1 ~ "nonfat",
+                                          milk == 2 ~ "2%",
+                                          milk == 3 ~ "soy",
+                                          milk == 4 ~ "coconut",
+                                          milk == 5 ~ "whole"))
+```
+
+```{r mutate_whip, include = FALSE}
+starbucks <- starbucks %>% mutate(whip = ifelse(whip == 0, "no", "yes"))
+```
+
+```{r mutate_trans_fat_g, include = FALSE}
+starbucks <- starbucks %>% mutate(trans_fat_g = 
+                                  case_when(trans_fat_g == "0" ~ 0.0,
+                                          trans_fat_g == "0.1" ~ 0.1,
+                                          trans_fat_g == "0.2" ~ 0.2,
+                                          trans_fat_g == "0.3" ~ 0.3,
+                                          trans_fat_g == "0.4" ~ 0.4,
+                                          trans_fat_g == "0.5" ~ 0.5,
+                                          trans_fat_g == "02" ~ 2))
+```
+
+```{r mutate_fiber_g, include = FALSE}
+starbucks <- starbucks %>% mutate(fiber_g = 
+                                  case_when(fiber_g == "0" ~ 0,
+                                          fiber_g == "01" ~ 1,
+                                          fiber_g == "02" ~ 2,
+                                          fiber_g == "1" ~ 1,
+                                          fiber_g == "2" ~ 2,
+                                          fiber_g == "3" ~ 3,
+                                          fiber_g == "4" ~ 4,
+                                          fiber_g == "5" ~ 5,
+                                          fiber_g == "6" ~ 6,
+                                          fiber_g == "7" ~ 7,
+                                          fiber_g == "8" ~ 8,
+                                          fiber_g == "9" ~ 9))
+```
+### Section 1
+#### Introduction of the dataset:            
+We chose the Official Starbucks Nutritional dataset from the Starbucks Coffee Company. The pdf version is 22 pages and the dataset contains 1,147 entries and 15 total columns.    
+                                       
+This is the URL for the dataset:             
+https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md                        
+
+This is the actual pdf version of dataset we found on the internet:      
+https://globalassets.starbucks.com/assets/91939428ecd94155a58b8765b6397c87.pdf                 
+               
+#### Independent Research                      
+Scientific context ：                        
+The Official Starbucks Nutritional dataset, released by Starbucks, provides customers with information on all beverages offered on their menu. This information can help customers understand the nutritional content and calorie profile of their favorite beverages. This is important not only for customers, but also Starbucks for a couple of reasons. First of all, Calorie count in individual servings can help us better assess the total calories we consume in a day. Secondly, some nutrients may help some special groups make choices that can be vital to their health. For example, people with diabetes will choose beverages that are sugar-free, lower in fat, and lower in calories, and people who are lactose intolerant can choose milk-free drinks. Customers can find this relevant information from this data sheet and the interpretations made from it. Third, if a very detailed nutritional data table is provided, customers will trust Starbucks more, which can improve the reputation of the brand and attract more customers. Collecting this data is also very useful for Starbucks in making its menu. The menu contains guides on how customers can make better choices based on calories and caffeine.             
+                                
+Questions that can be asked:                     
+1) What is the relationship between the four variables we chose and calories? How many calories should I expect based on the other statistics of my drink? Where are the calories in my drink coming from?                                  
+2) Explore the relationship between the sugar and sodium, based on the milk and size. Does size and milk type make a difference in the sugar and sodium levels in the drink, and to what extent? How much more sugar or sodium would I consume from getting a large size, or having whole milk?
+            
+#### Details in the dataset:
+
+There isn’t much information about how the data in this set was collected. We know it is the official nutritional dataset, with the data collected by Starbucks themselves. PythonCoderUnicorn is the organization which converted the data from an initial pdf document into a csv file. According to the original pdf, the nutritional information for beverages is calculated based on standard recipes, so some information, especially that of caffeine, is approximate and based on limited analytical data. The handcrafted nature of beverages may result in a variation from the reported values. Some important variables inside the dataset are `size`, `milk`, `serv_size_m_l`, `calories`, `total_fat_g`, `sodium_mg`, `sugar_g`, and `caffeine_mg`. More details of the variables are shown in the codebook below.                                    
+
+#### Codebook    
+ 
+| Data Name | Description | Class | Values |
+|-----------|-------------|-------|--------|
+| `product_name` | Name of the product | categorical | Coffee, Latte, Espresso, etc|
+|`size`| Size of drink | categorical | tall, grande, venti |
+|`milk`| Type of milk used in drink | categorical | none, nonfat, 2%, soy, coconut, whole |
+|`whip`| Whether or not whip was added | categorical | yes, no |
+|`serv_size_m_l`| Serving size in milliliter | numeric | $[0,877]$ |
+|`calories`| kilocalorie in product | numeric | $[0,640]$ |
+|`total_fat_g`| Total fat in grams | numeric | $[0,28]$ |
+|`saturated_fat_g`| Saturated fat in grams | numeric | $[0,20]$ |
+|`trans_fat_g`| Trans fat in grams | numeric | $[0,2]$ |
+|`cholesterol_mg`| Cholesterol in milligrams | numeric | $[0,75]$ |
+|`sodium_mg`| Sodium in milligrams | numeric | $[0,370]$ |
+|`total_carbs_g`| Total Carbohydrates in grams | numeric | $[0,96]$ |
+|`fiber_g`| Fiber in grams | numeric | $[0,9]$ |
+|`sugar_g`| Sugar in grams | numeric | $[0,89]$ |
+|`caffeine_mg`| Caffeine in milligrams | numeric | $[0,475]$ |
+
+#### Glimpse of the dataset:
+```{r glimpse_the_data, message = FALSE, warning = FALSE, echo = FALSE}
+glimpse(starbucks)
+```
+
+
+### Section 2
+#### For our final project:                   
+The response variable is `calories` (numerical).            
+The explanatory variables are `sodium_mg` (numerical), `sugar_g` (numerical), `milk`(categorical), and `size`(categorical).
+                    
+#### Challenges we foresee in this dataset:          
+For our categorical variable `size`, the categories "1 scoop", "1 shot", "doppio", "quad", "solo", and "triple" contain less than 10 samples. Therefore, the analysis for these categories may not be accurate. 
+```{r count_size, warning = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+starbucks %>% count(size)
+```
+
+#### Preliminary exploratory data analysis and explanation: 
+
+1) Sodium is a mineral that’s essential for life. However, extra sodium in our bloodstream will cause high blood pressure. Many Starbucks beverages contain sodium inside. Therefore, we chose sodium as one of our variables to analyze. 
+
+According to the graph, there is a strong positive linear relationship between sodium and calories in Starbucks beverages. The correlation coefficient I calculated is about 0.845, so the strength of the relationship is strong.
+```{r scatterplot(sodium/calories), warning = FALSE, message = FALSE, echo = FALSE}
+ggplot(data = starbucks, 
+       mapping = aes(x = sodium_mg, y = calories)) +
+  geom_point() +
+  labs(title = "The Relationship between Sodium and Calories in Starbucks Beverage", 
+       subtitle = "The scatterplot between sodium_mg and calories", 
+       x = "Total Sodium in Beverage (mg)", 
+       y = "Total Calories for Beverage (KCal)", 
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md") 
+```
+
+```{r correlation_btw_sodium_and_calories, warning = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+starbucks %>%
+  summarise(cor(sodium_mg, calories))
+```
+
+2) Sugar has become an important ingredient in nutrition discussion in recent years. As the food processing industry continues to grow, sugar is ubiquitous in food. Eating too much sugar can lead to conditions such as tooth decay and obesity.
+
+The distribution of sugar is bi-model and has two peaks (around 0 and 34). The median is 34 sugar grams. 
+```{r sugar_histogram, warning = FALSE, message = FALSE, echo = FALSE}
+ggplot (data = starbucks, mapping = aes(x = sugar_g))+
+  geom_histogram(binwidth = 2.6)+
+  labs(title = "The Distribution of Sugar",
+       subtitle = "The histogram of sugar_g",
+       x = "Sugar (grams)",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md")
+
+#The calculation of binwidth:89(range=89) / 34(the square root of 1147) = around 2.6. 
+#The code to calculate the Max and Min: starbucks%>%summarise(max=max(sugar_g),min=min(sugar_g))
+```
+ 
+As we can see in the scatterplot and line we created, the relationship between sugar and calories is linear and positive. Also, they have a strong relationship. 
+```{r sugar_line, warning = FALSE, message = FALSE, echo = FALSE}
+ggplot(data = starbucks,
+       mapping = aes(x = sugar_g, y = calories))+
+      geom_point() +
+  labs(title = "The Relationship between Sugar and Calories in Starbucks beverage",
+       subtitle = "the scatterplot between sugar_g and calories",
+       x = "Sugar (grams)",
+       y = "Total Calories for Beverage (KCal)", 
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md")
+```
+
+3) The type of milk used always has an impact on the total amount of calories a drink contains. Thus, milk should be one of our category variables. Let's take a closer look at the correlation between just the calories and type of milk in each drink.
+
+A density plot will be useful to show the differences in distributions based on the type of milk used, as seen in the graph below.
+```{r ridge_ cal_milk, warning = FALSE, message = FALSE, echo = FALSE}
+ggplot(data = starbucks, mapping = aes(calories)) +
+  geom_density(aes(fill = factor(milk)), alpha = 0.3) +
+  labs(title = "The Distribution of Calories using Different Type of Milk",
+       subtitle = "The density plot of calories",
+       x = "Total Calories for Beverage (KCal)",
+       y = "Density",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md")
+```
+
+Drinks with no milk, as can be seen here, often have a calorie count that is much lower than any other type of milk. Along with this, nonfat milk seems to have the lowest average out of the others, while whole milk seems to have the largest. All types other than no milk seem to have fairly normal distributions with a skew to the right side.
+```{r table_cal_milk, warning = FALSE, message = FALSE, echo = FALSE}
+starbucks %>%
+  group_by(milk) %>%
+  summarize(mean_milk_cal = mean(calories),
+            min_milk_cal = min(calories),
+            max_milk_cal = max(calories),
+            sd_milk_cal = sd(calories)) %>%
+  arrange(mean_milk_cal)
+```
+
+4) As a matter of fact, we know the larger size of beverage often contains more calories. There must be a relation between size and calories. Therefore, size should be one of the variables we analyze in the project. 
+```{r boxplot_size, warning = FALSE, message = FALSE, echo = FALSE}
+ggplot(data = starbucks,
+       mapping = aes(x = calories, fill = size))+
+      geom_boxplot() +
+  labs (title = "The Distribution of Calories using Different Size",
+       subtitle = "The barplot of calories",
+       x = "Total Calories for Beverage (KCal)",
+       y = "Size",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md")
+```
+
+According to the boxplot, for the size categories with over 50 samples, we know the distributions of "venti", "tall", and "grande" are symmetric. The distribution of "trenta" is highly left-skewed and the distribution of "short" is slightly right-skewed. In comparison, "venti" has the largest median calories, at 330 kCal with an IQR of 240 kCal. "Grande" has the second largest median calories, at 250 Kcal, and "trenta" has the third largest, at 210 kCal. 
+```{r table_size_cal, warning = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+starbucks %>% group_by(size) %>% 
+  summarize(median_size_cal = median(calories), 
+            IQR_size_cal = IQR(calories),
+            min_size_cal = min(calories),
+            max_size_cal = max(calories))
+```
+5) Calories: A calorie is a unit of energy. We tend to associate calories with food. Each different nutrient affects calories. The calories vary depending on the ingredients we choose, the size of the cup, or anything else. Therefore, calorie is a good response variable for our data.
+
+The distribution of calories is uni-model and sightly right-skewed. For the center, the median is 220 kCal. The range of calories is from 0 to 640 kCal.  
+```{r calories_density, warning = FALSE, message = FALSE, echo = FALSE}
+ggplot(data = starbucks, mapping = aes(x = calories))+
+ geom_density()+
+ labs(title = "The Distribution of Calories",
+       subtitle = "The density plot of calories",
+       x = "Total Calories for Beverage (KCal)",
+       y = "Density",
+       caption = "Source: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md")
+```
+```{r table_cal, warning = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+starbucks %>% summarize(median_cal = median(calories), 
+            IQR_cal = IQR(calories),
+            min_cal = min(calories),
+            max_cal = max(calories))
+```
+
+### Bibliography
+This is the URL for the dataset:             
+https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-12-21/readme.md                        
+
+This is the pdf version of dataset we found on the internet:      
+https://globalassets.starbucks.com/assets/91939428ecd94155a58b8765b6397c87.pdf 
